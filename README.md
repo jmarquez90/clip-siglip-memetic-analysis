@@ -23,7 +23,7 @@ This ablation reveals whether performance actually benefits from multimodal info
 
 ## Dataset
 
-The dataset is not included in this repository. The notebook includes a license-acknowledgement cell that downloads the required files from the [`neuralcatcher/hateful_memes` Hugging Face repository](https://huggingface.co/datasets/neuralcatcher/hateful_memes). Before downloading, it links to and requires explicit acceptance of the included [Hateful Memes Dataset License Agreement](https://huggingface.co/datasets/neuralcatcher/hateful_memes/blob/main/LICENSE.txt). The source repository is a community-hosted copy; Meta's original distribution was provided through the [Hateful Memes Challenge](https://www.drivendata.org/competitions/64/hateful-memes/).
+The dataset is not included in this repository. The notebook includes a license-acknowledgement cell that downloads the required files from the [`panjiyarsunil/hateful-memes-data` Hugging Face repository](https://huggingface.co/datasets/panjiyarsunil/hateful-memes-data). Before downloading, it links to and requires explicit acceptance of the included [Hateful Memes Dataset License Agreement](https://huggingface.co/datasets/panjiyarsunil/hateful-memes-data/blob/main/LICENSE.txt). The source repository is a community-hosted copy with all 10,000 images; Meta's original distribution was provided through the [Hateful Memes Challenge](https://www.drivendata.org/competitions/64/hateful-memes/).
 
 Expected layout:
 
@@ -49,7 +49,8 @@ The notebook includes a self-contained Colab bootstrap and can be opened directl
 2. Select **Runtime > Change runtime type > GPU**.
 3. Run the first code cell. It keeps Colab's preinstalled scientific stack, installs the model-specific dependencies, and mounts Google Drive.
 4. Replace `<YOUR_PROJECT_FOLDER>` in `COLAB_DATA_ROOT` and `COLAB_ARTIFACT_ROOT` with a folder in your own Drive.
-5. Select **Runtime > Run all**. If the dataset is absent, review the linked license and type `I ACCEPT` at the prompt. The notebook downloads approximately 3.4 GB into Drive and resumes partial downloads when rerun.
+5. For reliable downloads from Colab's shared IP, create a read-only token under [Hugging Face access tokens](https://huggingface.co/settings/tokens). Open Colab's **Secrets** panel, add it under the name `HF_TOKEN`, and enable notebook access. Never paste the token into a code cell.
+6. Select **Runtime > Run all**. If the dataset is absent, review the linked license and type `I ACCEPT` at the prompt. The notebook downloads approximately 3.4 GB into Drive and resumes partial downloads when rerun. Existing complete files skip authentication and downloading.
 
 In Colab, the bootstrap installs the latest compatible Transformers 4.x and SentencePiece releases used by this notebook. It installs a core runtime package only if Colab does not already provide it, so it does not hot-swap NumPy, pandas, scikit-learn, seaborn, or PyTorch inside a running kernel. This preserves both binary compatibility and Colab's CUDA-enabled PyTorch build. In a local checkout, the bootstrap installs the complete pinned environment from `requirements.txt`.
 
