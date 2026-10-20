@@ -1,0 +1,10 @@
+.idea/
+.ipynb_checkpoints/
+.venv/
+__pycache__/
+artifacts/
+data/
+*.ckpt
+*.joblib
+*.npz
+
