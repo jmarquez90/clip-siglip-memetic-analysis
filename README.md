@@ -4,13 +4,13 @@ This project evaluates frozen CLIP and SigLIP representations on Meta's Hateful 
 
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jmarquez90/clip-siglip-memetic-analysis/blob/master/hateful-memes-clip-siglip.ipynb)
 
-The experiment trains a linear probe over three feature sets for each encoder:
+The experiment evaluates three distinct model families:
 
-- image embeddings;
-- text embeddings; and
-- concatenated image + text embeddings.
+- controlled linear probes over image, text, and concatenated CLIP/SigLIP embeddings;
+- separate projected concat, align, and full cross-interaction heads over frozen CLIP/SigLIP embeddings; and
+- an end-to-end Concat BERT literature baseline using BERT and ResNet-152.
 
-This ablation reveals whether performance actually benefits from multimodal information. Hyperparameters are selected on the development split, and final metrics are computed once on the held-out test split using continuous probabilities.
+The ablations reveal whether performance actually benefits from multimodal information and whether learned feature interactions improve on raw concatenation. Hyperparameters and early-stopped checkpoints are selected on the development split, and final metrics are computed on the held-out test split using continuous probabilities.
 
 ## What the notebook demonstrates
 
@@ -18,10 +18,12 @@ This ablation reveals whether performance actually benefits from multimodal info
 - pretrained CLIP and SigLIP inference through Hugging Face Transformers;
 - normalized representation extraction and local caching;
 - controlled image-only, text-only, and multimodal ablations;
+- learned projected concatenation, element-wise alignment, and full cross-modal interaction;
+- a separately implemented Concat BERT literature baseline in models/concat_bert.py;
 - probability-based ROC-AUC and average precision;
 - accuracy, balanced accuracy, precision, recall, F1, and confusion matrices;
 - qualitative inspection of confidently wrong predictions;
-- saved metrics, predictions, model probes, and environment metadata.
+- separate checkpoints, metrics, predictions, training histories, and environment metadata.
 
 ## Dataset
 
@@ -49,7 +51,7 @@ The notebook includes a self-contained Colab bootstrap and can be opened directl
 
 1. Open `hateful-memes-clip-siglip.ipynb` in Google Colab.
 2. Select **Runtime > Change runtime type > GPU**.
-3. Run the first code cell. It keeps Colab's preinstalled scientific stack, installs the model-specific dependencies, and mounts Google Drive.
+3. Run the first code cell. It keeps Colab's preinstalled scientific stack, installs the model-specific dependencies, mounts Google Drive, and clones this repository only when the external model module is not already available.
 4. Replace `<YOUR_PROJECT_FOLDER>` in `COLAB_DATA_ROOT` and `COLAB_ARTIFACT_ROOT` with a folder in your own Drive.
 5. Select **Runtime > Run all**. If the dataset is absent, review the linked license and type `I ACCEPT` at the prompt. KaggleHub downloads and extracts approximately 3.6 GB into Drive as a single archive transfer. Existing complete files skip the download.
 
@@ -59,7 +61,7 @@ If an earlier version of the install cell replaced NumPy or another compiled pac
 
 Drive-backed artifacts allow cached CLIP and SigLIP embeddings to survive runtime disconnects. To use ephemeral Colab storage instead, set `HATEFUL_MEMES_ARTIFACT_ROOT` to `/content/artifacts` before running the configuration cell.
 
-Advanced users can set `SKIP_NOTEBOOK_INSTALL=true` or `SKIP_GOOGLE_DRIVE_MOUNT=true` in the environment before running the bootstrap.
+Advanced users can set `SKIP_NOTEBOOK_INSTALL=true` or `SKIP_GOOGLE_DRIVE_MOUNT=true` in the environment before running the bootstrap. If a Colab session already has an authenticated checkout of the repository, set `NOTEBOOK_REPO_ROOT` to that checkout before running the bootstrap; this avoids a second clone and also works while the repository is private.
 
 ## Setup
 
@@ -85,11 +87,14 @@ Then open `hateful-memes-clip-siglip.ipynb` and run the cells from top to bottom
 
 Successful execution creates an ignored `artifacts/` directory containing:
 
-- `metrics.csv` — held-out metrics for every model and feature set;
-- `test_predictions.csv` — probabilities for transparent error analysis;
+- `metrics.csv` — held-out metrics for every linear-probe model and feature set;
+- `test_predictions.csv` — linear-probe probabilities for transparent error analysis;
+- `interaction_metrics.csv` and `interaction_test_predictions.csv` — results for the six learned CLIP/SigLIP fusion heads;
+- `concat_bert_metrics.csv`, `concat_bert_training_history.csv`, and `concat_bert_test_predictions.csv` — the independent literature-baseline run;
+- `model_family_metrics.csv` — the compact cross-family comparison table;
 - `run_metadata.json` — versions, device, seed, and model identifiers;
 - `embeddings/` — reusable frozen embeddings; and
-- `models/` — fitted scikit-learn probes.
+- `models/` — fitted scikit-learn probes plus one PyTorch checkpoint per learned fusion model and the Concat BERT baseline.
 
 Do not publish performance claims until the notebook has completed and the generated metrics have been reviewed. Cached artifacts are intentionally excluded from version control because they can be large and may encode dataset-derived information.
 
@@ -99,6 +104,8 @@ Do not publish performance claims until the notebook has completed and the gener
 - Embeddings are L2-normalized before linear probing.
 - Logistic-regression regularization is selected by development ROC-AUC.
 - The selected probe is refit on train + development data before test evaluation.
+- The learned CLIP/SigLIP heads use frozen cached embeddings and early stopping on development ROC-AUC.
+- Concat BERT is a separate end-to-end BERT + ResNet-152 reproduction; it does not reuse CLIP/SigLIP embeddings and is not presented as an original architecture. The implementation adapts DrivenData's public mid-level concatenation scaffold, whose original demonstration used fixed fastText embeddings rather than BERT.
 - ROC-AUC and average precision use probabilities, not thresholded predictions.
 - The constant-probability baseline makes chance-level performance explicit.
 
@@ -111,6 +118,7 @@ The source material can contain hateful and discriminatory content. Image render
 ## References
 
 - Kiela et al., [The Hateful Memes Challenge: Detecting Hate Speech in Multimodal Memes](https://arxiv.org/abs/2005.04790)
+- DrivenData, [How to build a multimodal deep learning model to detect hateful memes](https://drivendata.co/blog/hateful-memes-benchmark)
 - Radford et al., [Learning Transferable Visual Models From Natural Language Supervision](https://arxiv.org/abs/2103.00020)
 - Zhai et al., [Sigmoid Loss for Language Image Pre-Training](https://arxiv.org/abs/2303.15343)
 - Kumar and Nandakumar, [Hate-CLIPper: Multimodal Hateful Meme Classification based on Cross-modal Interaction of CLIP Features](https://arxiv.org/abs/2210.05916)
