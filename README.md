@@ -37,6 +37,8 @@ Expected layout:
         └── ...
 ```
 
+`HATEFUL_MEMES_DATA_ROOT` may point either to `<HATEFUL_MEMES_DATA_ROOT>` in the example above or directly to its `hateful-memes` child directory. The downloaded archive must be extracted before running the notebook.
+
 The benchmark deliberately uses only the original `text` and binary `label` fields. Gold protected-class and attack annotations are excluded because they may be unavailable at inference time and could act as privileged information.
 
 ## Run in Google Colab
@@ -46,7 +48,7 @@ The notebook includes a self-contained Colab bootstrap and can be opened directl
 1. Open `hateful-memes-clip-siglip.ipynb` in Google Colab.
 2. Select **Runtime > Change runtime type > GPU**.
 3. Run the first code cell. It keeps Colab's preinstalled scientific stack, installs the model-specific dependencies, and mounts Google Drive.
-4. In the configuration cell, replace `<YOUR_PROJECT_FOLDER>` in `COLAB_DATA_ROOT` and `COLAB_ARTIFACT_ROOT` with generic folders in your own Drive.
+4. Extract the dataset in Drive, then replace `<YOUR_PROJECT_FOLDER>` in `COLAB_DATA_ROOT` and `COLAB_ARTIFACT_ROOT`. `COLAB_DATA_ROOT` may be either the directory containing `hateful-memes` or the extracted dataset directory itself.
 5. Select **Runtime > Run all**.
 
 In Colab, the bootstrap installs the latest compatible Transformers 4.x and SentencePiece releases used by this notebook. It installs a core runtime package only if Colab does not already provide it, so it does not hot-swap NumPy, pandas, scikit-learn, seaborn, or PyTorch inside a running kernel. This preserves both binary compatibility and Colab's CUDA-enabled PyTorch build. In a local checkout, the bootstrap installs the complete pinned environment from `requirements.txt`.
