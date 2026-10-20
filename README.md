@@ -23,7 +23,7 @@ This ablation reveals whether performance actually benefits from multimodal info
 
 ## Dataset
 
-The dataset is not included in this repository. The notebook includes a license-acknowledgement cell that downloads the public [`parthplc/facebook-hateful-meme-dataset` Kaggle mirror](https://www.kaggle.com/datasets/parthplc/facebook-hateful-meme-dataset) as one archive. This avoids the per-file request limits triggered by repositories that store 10,000 images individually. Before downloading, the notebook links to and requires explicit acceptance of the [Hateful Memes Dataset License Agreement](https://www.drivendata.org/competitions/64/hateful-memes/).
+The dataset is not included in this repository. The notebook includes a license-acknowledgement cell that downloads the public [`parthplc/facebook-hateful-meme-dataset` Kaggle mirror](https://www.kaggle.com/datasets/parthplc/facebook-hateful-meme-dataset) as one archive. This avoids the per-file request limits triggered by repositories that store 10,000 images individually. Kaggle's `test.jsonl` is the unlabeled challenge file, so the notebook reuses a previously downloaded `test_seen.jsonl` when available or downloads that one small labeled annotation file from a pinned Hugging Face revision. Before downloading, the notebook links to and requires explicit acceptance of the [Hateful Memes Dataset License Agreement](https://www.drivendata.org/competitions/64/hateful-memes/).
 
 Expected layout:
 
