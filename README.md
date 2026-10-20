@@ -45,11 +45,13 @@ The notebook includes a self-contained Colab bootstrap and can be opened directl
 
 1. Open `hateful-memes-clip-siglip.ipynb` in Google Colab.
 2. Select **Runtime > Change runtime type > GPU**.
-3. Run the first code cell. It installs the pinned Python dependencies and mounts Google Drive.
+3. Run the first code cell. It keeps Colab's preinstalled scientific stack, installs the model-specific dependencies, and mounts Google Drive.
 4. In the configuration cell, replace `<YOUR_PROJECT_FOLDER>` in `COLAB_DATA_ROOT` and `COLAB_ARTIFACT_ROOT` with generic folders in your own Drive.
 5. Select **Runtime > Run all**.
 
-When `requirements.txt` is present, the bootstrap installs from it. When the notebook is opened by itself, the cell installs the equivalent inline pins. It does not replace Colab's preinstalled PyTorch when a compatible build is already available, preserving the runtime's CUDA support.
+In Colab, the bootstrap installs the latest compatible Transformers 4.x and SentencePiece releases used by this notebook. It installs a core runtime package only if Colab does not already provide it, so it does not hot-swap NumPy, pandas, scikit-learn, seaborn, or PyTorch inside a running kernel. This preserves both binary compatibility and Colab's CUDA-enabled PyTorch build. In a local checkout, the bootstrap installs the complete pinned environment from `requirements.txt`.
+
+If an earlier version of the install cell replaced NumPy or another compiled package, choose **Runtime > Disconnect and delete runtime**, reopen the notebook, and run it from the first cell. Restarting code in the already-modified runtime is not sufficient.
 
 Drive-backed artifacts allow cached CLIP and SigLIP embeddings to survive runtime disconnects. To use ephemeral Colab storage instead, set `HATEFUL_MEMES_ARTIFACT_ROOT` to `/content/artifacts` before running the configuration cell.
 
