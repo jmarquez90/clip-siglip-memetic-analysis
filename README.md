@@ -2,6 +2,8 @@
 
 This project evaluates frozen CLIP and SigLIP representations on Meta's Hateful Memes benchmark. It is designed as a controlled, reproducible comparison rather than a claim that a single model is ready for content moderation.
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jmarquez90/clip-siglip-memetic-analysis/blob/master/hateful-memes-clip-siglip.ipynb)
+
 The experiment trains a linear probe over three feature sets for each encoder:
 
 - image embeddings;
@@ -114,3 +116,10 @@ The source material can contain hateful and discriminatory content. Image render
 - Kumar and Nandakumar, [Hate-CLIPper: Multimodal Hateful Meme Classification based on Cross-modal Interaction of CLIP Features](https://arxiv.org/abs/2210.05916)
 - Hee, Lee, and Chong, [On Explaining Multimodal Hateful Meme Detection Models](https://arxiv.org/abs/2204.01734)
 
+## License
+
+The original code in this repository is licensed under the MIT License.
+
+The Hateful Memes dataset, pretrained model weights, and other third-party
+assets remain subject to their respective licenses and are not covered by
+this repository's code license.
