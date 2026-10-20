@@ -39,6 +39,22 @@ Expected layout:
 
 The benchmark deliberately uses only the original `text` and binary `label` fields. Gold protected-class and attack annotations are excluded because they may be unavailable at inference time and could act as privileged information.
 
+## Run in Google Colab
+
+The notebook includes a self-contained Colab bootstrap and can be opened directly from GitHub without cloning the repository first.
+
+1. Open `hateful-memes-clip-siglip.ipynb` in Google Colab.
+2. Select **Runtime > Change runtime type > GPU**.
+3. Run the first code cell. It installs the pinned Python dependencies and mounts Google Drive.
+4. In the configuration cell, replace `<YOUR_PROJECT_FOLDER>` in `COLAB_DATA_ROOT` and `COLAB_ARTIFACT_ROOT` with generic folders in your own Drive.
+5. Select **Runtime > Run all**.
+
+When `requirements.txt` is present, the bootstrap installs from it. When the notebook is opened by itself, the cell installs the equivalent inline pins. It does not replace Colab's preinstalled PyTorch when a compatible build is already available, preserving the runtime's CUDA support.
+
+Drive-backed artifacts allow cached CLIP and SigLIP embeddings to survive runtime disconnects. To use ephemeral Colab storage instead, set `HATEFUL_MEMES_ARTIFACT_ROOT` to `/content/artifacts` before running the configuration cell.
+
+Advanced users can set `SKIP_NOTEBOOK_INSTALL=true` or `SKIP_GOOGLE_DRIVE_MOUNT=true` in the environment before running the bootstrap.
+
 ## Setup
 
 Create an environment with Python 3.10 or newer:
