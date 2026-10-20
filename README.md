@@ -23,7 +23,7 @@ This ablation reveals whether performance actually benefits from multimodal info
 
 ## Dataset
 
-The dataset is not included in this repository. Request or download it through the [Hateful Memes Challenge site](https://hatefulmemeschallenge.com/#download) and comply with its license and access terms.
+The dataset is not included in this repository. The notebook includes a license-acknowledgement cell that downloads the required files from the [`neuralcatcher/hateful_memes` Hugging Face repository](https://huggingface.co/datasets/neuralcatcher/hateful_memes). Before downloading, it links to and requires explicit acceptance of the included [Hateful Memes Dataset License Agreement](https://huggingface.co/datasets/neuralcatcher/hateful_memes/blob/main/LICENSE.txt). The source repository is a community-hosted copy; Meta's original distribution was provided through the [Hateful Memes Challenge](https://www.drivendata.org/competitions/64/hateful-memes/).
 
 Expected layout:
 
@@ -48,8 +48,8 @@ The notebook includes a self-contained Colab bootstrap and can be opened directl
 1. Open `hateful-memes-clip-siglip.ipynb` in Google Colab.
 2. Select **Runtime > Change runtime type > GPU**.
 3. Run the first code cell. It keeps Colab's preinstalled scientific stack, installs the model-specific dependencies, and mounts Google Drive.
-4. Extract the dataset in Drive, then replace `<YOUR_PROJECT_FOLDER>` in `COLAB_DATA_ROOT` and `COLAB_ARTIFACT_ROOT`. `COLAB_DATA_ROOT` may be either the directory containing `hateful-memes` or the extracted dataset directory itself.
-5. Select **Runtime > Run all**.
+4. Replace `<YOUR_PROJECT_FOLDER>` in `COLAB_DATA_ROOT` and `COLAB_ARTIFACT_ROOT` with a folder in your own Drive.
+5. Select **Runtime > Run all**. If the dataset is absent, review the linked license and type `I ACCEPT` at the prompt. The notebook downloads approximately 3.4 GB into Drive and resumes partial downloads when rerun.
 
 In Colab, the bootstrap installs the latest compatible Transformers 4.x and SentencePiece releases used by this notebook. It installs a core runtime package only if Colab does not already provide it, so it does not hot-swap NumPy, pandas, scikit-learn, seaborn, or PyTorch inside a running kernel. This preserves both binary compatibility and Colab's CUDA-enabled PyTorch build. In a local checkout, the bootstrap installs the complete pinned environment from `requirements.txt`.
 
