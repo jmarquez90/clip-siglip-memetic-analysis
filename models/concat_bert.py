@@ -26,6 +26,7 @@ from sklearn.metrics import (
 )
 from torch.utils.data import DataLoader, Dataset
 from torchvision.models import ResNet152_Weights, resnet152
+from tqdm.auto import tqdm
 from transformers import AutoModel, AutoTokenizer
 
 TEXT_MODEL_ID = "google-bert/bert-base-uncased"
@@ -49,6 +50,7 @@ class ConcatBertConfig:
     weight_decay: float = 1e-4
     max_epochs: int = 10
     patience: int = 3
+    show_progress: bool = True
 
 
 @dataclass
@@ -205,10 +207,19 @@ def _probabilities(
     model: torch.nn.Module,
     loader: DataLoader,
     device: torch.device,
+    description: str,
+    show_progress: bool,
 ) -> np.ndarray:
     model.eval()
     probability_batches = []
-    for batch in loader:
+    progress = tqdm(
+        loader,
+        desc=description,
+        unit="batch",
+        leave=False,
+        disable=not show_progress,
+    )
+    for batch in progress:
         with torch.autocast(
             device_type=device.type,
             enabled=device.type == "cuda",
@@ -323,12 +334,26 @@ def train_concat_bert_baseline(
     epochs_without_improvement = 0
     history: list[dict[str, float | int]] = []
 
+    print(
+        "Concat BERT training: "
+        f"device={device}, train_examples={len(train_frame):,}, "
+        f"batches_per_epoch={len(train_loader):,}, "
+        f"epochs={config.max_epochs}, "
+        f"gradient_accumulation={config.gradient_accumulation_steps}"
+    )
+
     for epoch in range(1, config.max_epochs + 1):
         model.train()
         optimizer.zero_grad(set_to_none=True)
         running_loss = 0.0
         example_count = 0
-        for batch_index, batch in enumerate(train_loader, start=1):
+        progress = tqdm(
+            train_loader,
+            desc=f"Concat BERT epoch {epoch}/{config.max_epochs}",
+            unit="batch",
+            disable=not config.show_progress,
+        )
+        for batch_index, batch in enumerate(progress, start=1):
             labels = batch["labels"].to(device, non_blocking=True)
             with torch.autocast(
                 device_type=device.type,
@@ -355,8 +380,18 @@ def train_concat_bert_baseline(
             )
             running_loss += batch_loss.item() * len(labels)
             example_count += len(labels)
+            progress.set_postfix(
+                loss=f"{running_loss / example_count:.4f}",
+                refresh=False,
+            )
 
-        dev_probabilities = _probabilities(model, dev_loader, device)
+        dev_probabilities = _probabilities(
+            model,
+            dev_loader,
+            device,
+            description=f"Concat BERT validation {epoch}/{config.max_epochs}",
+            show_progress=config.show_progress,
+        )
         dev_auc = float(
             roc_auc_score(dev_frame["label"], dev_probabilities)
         )
@@ -382,13 +417,25 @@ def train_concat_bert_baseline(
         else:
             epochs_without_improvement += 1
             if epochs_without_improvement >= config.patience:
+                print(
+                    "Concat BERT early stopping: "
+                    f"no development ROC-AUC improvement for "
+                    f"{config.patience} epochs; best epoch={best_epoch}, "
+                    f"best development ROC-AUC={best_dev_auc:.4f}."
+                )
                 break
 
     if best_state is None:
         raise RuntimeError("Concat BERT training did not produce a checkpoint")
 
     model.load_state_dict(best_state)
-    test_probabilities = _probabilities(model, test_loader, device)
+    test_probabilities = _probabilities(
+        model,
+        test_loader,
+        device,
+        description="Concat BERT held-out evaluation",
+        show_progress=config.show_progress,
+    )
     trainable_parameters = sum(
         parameter.numel()
         for parameter in model.parameters()
