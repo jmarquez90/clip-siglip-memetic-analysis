@@ -31,6 +31,9 @@ from transformers import AutoModel, AutoTokenizer
 
 TEXT_MODEL_ID = "google-bert/bert-base-uncased"
 IMAGE_MODEL_ID = "torchvision/resnet152@IMAGENET1K_V2"
+CHECKPOINT_VERSION = 1
+RESUME_CHECKPOINT_NAME = "concat-bert--resnet152.resume.pt"
+BEST_CHECKPOINT_NAME = "concat-bert--resnet152.best.pt"
 
 
 @dataclass(frozen=True)
@@ -51,6 +54,7 @@ class ConcatBertConfig:
     max_epochs: int = 10
     patience: int = 3
     show_progress: bool = True
+    resume_from_checkpoint: bool = True
 
 
 @dataclass
@@ -275,6 +279,163 @@ def _step_optimizer_if_due(
     optimizer.zero_grad(set_to_none=True)
 
 
+def _seed_torch(seed: int) -> None:
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def _checkpoint_identity(
+    config: ConcatBertConfig,
+    seed: int,
+    train_size: int,
+    dev_size: int,
+) -> dict[str, Any]:
+    config_values = asdict(config)
+    for runtime_setting in (
+        "max_epochs",
+        "show_progress",
+        "resume_from_checkpoint",
+    ):
+        config_values.pop(runtime_setting)
+    return {
+        "checkpoint_version": CHECKPOINT_VERSION,
+        "config": config_values,
+        "seed": int(seed),
+        "train_size": int(train_size),
+        "dev_size": int(dev_size),
+    }
+
+
+def _atomic_torch_save(payload: dict[str, Any], path: Path) -> None:
+    temporary_path = path.with_suffix(f"{path.suffix}.tmp")
+    torch.save(payload, temporary_path)
+    temporary_path.replace(path)
+
+
+def _save_best_checkpoint(
+    *,
+    model: torch.nn.Module,
+    path: Path,
+    epoch: int,
+    dev_auc: float,
+    identity: dict[str, Any],
+) -> None:
+    _atomic_torch_save(
+        {
+            "identity": identity,
+            "epoch": int(epoch),
+            "dev_roc_auc": float(dev_auc),
+            "state_dict": model.state_dict(),
+        },
+        path,
+    )
+
+
+def _save_resume_checkpoint(
+    *,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scaler: torch.amp.GradScaler,
+    train_loader: DataLoader,
+    path: Path,
+    identity: dict[str, Any],
+    completed_epoch: int,
+    best_epoch: int,
+    best_dev_auc: float,
+    epochs_without_improvement: int,
+    history: list[dict[str, float | int]],
+) -> None:
+    generator = train_loader.generator
+    _atomic_torch_save(
+        {
+            "identity": identity,
+            "completed_epoch": int(completed_epoch),
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scaler_state_dict": scaler.state_dict(),
+            "best_epoch": int(best_epoch),
+            "best_dev_auc": float(best_dev_auc),
+            "epochs_without_improvement": int(
+                epochs_without_improvement
+            ),
+            "history": history,
+            "torch_rng_state": torch.get_rng_state(),
+            "cuda_rng_state_all": (
+                torch.cuda.get_rng_state_all()
+                if torch.cuda.is_available()
+                else None
+            ),
+            "loader_generator_state": (
+                generator.get_state() if generator is not None else None
+            ),
+        },
+        path,
+    )
+
+
+def _restore_resume_checkpoint(
+    *,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scaler: torch.amp.GradScaler,
+    train_loader: DataLoader,
+    path: Path,
+    best_path: Path,
+    identity: dict[str, Any],
+) -> tuple[int, int, float, int, list[dict[str, float | int]]]:
+    checkpoint = torch.load(path, map_location="cpu", weights_only=True)
+    if checkpoint.get("identity") != identity:
+        raise RuntimeError(
+            "The Concat BERT resume checkpoint belongs to a different "
+            "configuration or dataset. Delete it or set "
+            "ConcatBertConfig(resume_from_checkpoint=False) to start over."
+        )
+    if not best_path.is_file():
+        raise RuntimeError(
+            "The Concat BERT resume checkpoint exists, but its best-model "
+            f"checkpoint is missing: {best_path}"
+        )
+
+    model.load_state_dict(checkpoint["model_state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    scaler.load_state_dict(checkpoint["scaler_state_dict"])
+    torch.set_rng_state(checkpoint["torch_rng_state"])
+    cuda_rng_state = checkpoint.get("cuda_rng_state_all")
+    if cuda_rng_state is not None and torch.cuda.is_available():
+        torch.cuda.set_rng_state_all(cuda_rng_state)
+    generator_state = checkpoint.get("loader_generator_state")
+    if generator_state is not None and train_loader.generator is not None:
+        train_loader.generator.set_state(generator_state)
+
+    completed_epoch = int(checkpoint["completed_epoch"])
+    print(
+        "Resuming Concat BERT after completed epoch "
+        f"{completed_epoch}; next epoch={completed_epoch + 1}, "
+        f"best epoch={int(checkpoint['best_epoch'])}, "
+        f"best development ROC-AUC="
+        f"{float(checkpoint['best_dev_auc']):.4f}."
+    )
+    return (
+        completed_epoch + 1,
+        int(checkpoint["best_epoch"]),
+        float(checkpoint["best_dev_auc"]),
+        int(checkpoint["epochs_without_improvement"]),
+        list(checkpoint["history"]),
+    )
+
+
+def _load_best_model(
+    model: torch.nn.Module,
+    path: Path,
+    identity: dict[str, Any],
+) -> None:
+    checkpoint = torch.load(path, map_location="cpu", weights_only=True)
+    if checkpoint.get("identity") != identity:
+        raise RuntimeError("The Concat BERT best checkpoint is incompatible")
+    model.load_state_dict(checkpoint["state_dict"])
+
+
 def train_concat_bert_baseline(
     *,
     train_frame: Any,
@@ -293,10 +454,16 @@ def train_concat_bert_baseline(
     artifact_dir = Path(artifact_dir)
     model_dir = artifact_dir / "models"
     model_dir.mkdir(parents=True, exist_ok=True)
+    resume_checkpoint_path = model_dir / RESUME_CHECKPOINT_NAME
+    best_checkpoint_path = model_dir / BEST_CHECKPOINT_NAME
+    checkpoint_identity = _checkpoint_identity(
+        config,
+        seed,
+        len(train_frame),
+        len(dev_frame),
+    )
 
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
+    _seed_torch(seed)
 
     collate = _build_collate(config)
     train_loader = _loader(
@@ -330,9 +497,35 @@ def train_concat_bert_baseline(
 
     best_dev_auc = -np.inf
     best_epoch = 0
-    best_state = None
     epochs_without_improvement = 0
     history: list[dict[str, float | int]] = []
+    start_epoch = 1
+
+    if config.resume_from_checkpoint and resume_checkpoint_path.is_file():
+        (
+            start_epoch,
+            best_epoch,
+            best_dev_auc,
+            epochs_without_improvement,
+            history,
+        ) = _restore_resume_checkpoint(
+            model=model,
+            optimizer=optimizer,
+            scaler=scaler,
+            train_loader=train_loader,
+            path=resume_checkpoint_path,
+            best_path=best_checkpoint_path,
+            identity=checkpoint_identity,
+        )
+        if epochs_without_improvement >= config.patience:
+            start_epoch = config.max_epochs + 1
+            print(
+                "The restored checkpoint had already reached the early-"
+                "stopping condition; proceeding to held-out evaluation."
+            )
+    elif not config.resume_from_checkpoint:
+        resume_checkpoint_path.unlink(missing_ok=True)
+        best_checkpoint_path.unlink(missing_ok=True)
 
     print(
         "Concat BERT training: "
@@ -342,7 +535,7 @@ def train_concat_bert_baseline(
         f"gradient_accumulation={config.gradient_accumulation_steps}"
     )
 
-    for epoch in range(1, config.max_epochs + 1):
+    for epoch in range(start_epoch, config.max_epochs + 1):
         model.train()
         optimizer.zero_grad(set_to_none=True)
         running_loss = 0.0
@@ -409,26 +602,47 @@ def train_concat_bert_baseline(
         if dev_auc > best_dev_auc:
             best_dev_auc = dev_auc
             best_epoch = epoch
-            best_state = {
-                name: parameter.detach().cpu().clone()
-                for name, parameter in model.state_dict().items()
-            }
             epochs_without_improvement = 0
+            _save_best_checkpoint(
+                model=model,
+                path=best_checkpoint_path,
+                epoch=epoch,
+                dev_auc=dev_auc,
+                identity=checkpoint_identity,
+            )
         else:
             epochs_without_improvement += 1
-            if epochs_without_improvement >= config.patience:
-                print(
-                    "Concat BERT early stopping: "
-                    f"no development ROC-AUC improvement for "
-                    f"{config.patience} epochs; best epoch={best_epoch}, "
-                    f"best development ROC-AUC={best_dev_auc:.4f}."
-                )
-                break
 
-    if best_state is None:
+        _save_resume_checkpoint(
+            model=model,
+            optimizer=optimizer,
+            scaler=scaler,
+            train_loader=train_loader,
+            path=resume_checkpoint_path,
+            identity=checkpoint_identity,
+            completed_epoch=epoch,
+            best_epoch=best_epoch,
+            best_dev_auc=best_dev_auc,
+            epochs_without_improvement=epochs_without_improvement,
+            history=history,
+        )
+        print(
+            "Saved resumable Concat BERT checkpoint after epoch "
+            f"{epoch}: {resume_checkpoint_path}"
+        )
+        if epochs_without_improvement >= config.patience:
+            print(
+                "Concat BERT early stopping: "
+                f"no development ROC-AUC improvement for "
+                f"{config.patience} epochs; best epoch={best_epoch}, "
+                f"best development ROC-AUC={best_dev_auc:.4f}."
+            )
+            break
+
+    if not best_checkpoint_path.is_file():
         raise RuntimeError("Concat BERT training did not produce a checkpoint")
 
-    model.load_state_dict(best_state)
+    _load_best_model(model, best_checkpoint_path, checkpoint_identity)
     test_probabilities = _probabilities(
         model,
         test_loader,
@@ -452,9 +666,10 @@ def train_concat_bert_baseline(
         "trainable_parameters": int(trainable_parameters),
         **asdict(config),
     }
+    model = model.cpu()
     torch.save(
         {
-            "state_dict": best_state,
+            "state_dict": model.state_dict(),
             "config": artifact_config,
             "history": history,
         },
@@ -478,8 +693,10 @@ def train_concat_bert_baseline(
             "artifact": artifact_path.name,
         }
     )
+    resume_checkpoint_path.unlink(missing_ok=True)
+    best_checkpoint_path.unlink(missing_ok=True)
     return ConcatBertRun(
-        model=model.cpu(),
+        model=model,
         test_probabilities=test_probabilities,
         metrics=metrics,
         history=history,
