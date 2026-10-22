@@ -6,9 +6,9 @@ This project evaluates frozen CLIP and SigLIP representations on Meta's Hateful 
 
 The experiment evaluates three distinct model families:
 
-- controlled linear probes over image, text, and concatenated CLIP/SigLIP embeddings;
-- separate projected concat, align, and full cross-interaction heads over frozen CLIP/SigLIP embeddings; and
-- an end-to-end Concat BERT literature baseline using BERT and ResNet-152.
+- an end-to-end Concat BERT literature baseline using BERT and ResNet-152;
+- six primary fusion-specific linear probes: concat, align, and cross for both CLIP and SigLIP; and
+- six direct nonlinear fusion classifiers over the same frozen encoders as no-LPE ablations.
 
 The ablations reveal whether performance actually benefits from multimodal information and whether learned feature interactions improve on raw concatenation. Hyperparameters and early-stopped checkpoints are selected on the development split, and final metrics are computed on the held-out test split using continuous probabilities.
 
@@ -17,9 +17,10 @@ The ablations reveal whether performance actually benefits from multimodal infor
 - paired image/text ingestion and validation;
 - pretrained CLIP and SigLIP inference through Hugging Face Transformers;
 - normalized representation extraction and local caching;
-- controlled image-only, text-only, and multimodal ablations;
-- learned projected concatenation, element-wise alignment, and full cross-modal interaction;
+- linear-probe prediction over concatenation, element-wise alignment, and full cross-modal interaction;
+- direct nonlinear fusion classifiers as matched no-LPE ablations;
 - a separately implemented Concat BERT literature baseline in models/concat_bert.py;
+- reusable projected-fusion architectures and training in models/fusion.py;
 - probability-based ROC-AUC and average precision;
 - accuracy, balanced accuracy, precision, recall, F1, and confusion matrices;
 - qualitative inspection of confidently wrong predictions;
@@ -51,9 +52,10 @@ The notebook includes a self-contained Colab bootstrap and can be opened directl
 
 1. Open `hateful-memes-clip-siglip.ipynb` in Google Colab.
 2. Select **Runtime > Change runtime type > GPU**.
-3. Run the first code cell. It keeps Colab's preinstalled scientific stack, installs the model-specific dependencies, mounts Google Drive, and clones this repository only when the external model module is not already available.
-4. Replace `<YOUR_PROJECT_FOLDER>` in `COLAB_DATA_ROOT` and `COLAB_ARTIFACT_ROOT` with a folder in your own Drive.
-5. Select **Runtime > Run all**. If the dataset is absent, review the linked license and type `I ACCEPT` at the prompt. KaggleHub downloads and extracts approximately 3.6 GB into Drive as a single archive transfer. Existing complete files skip the download.
+3. While the repository is private, add a fine-grained GitHub token with read-only Contents access to Colab Secrets as `GH_TOKEN`, then enable notebook access to that secret. This step is unnecessary after the repository becomes public.
+4. Run the first code cell. It keeps Colab's preinstalled scientific stack, installs the model-specific dependencies, mounts Google Drive, and clones this repository only when the external model modules are not already available. The token is passed to Git through a temporary authorization header and is never saved in the notebook or clone URL.
+5. Replace `<YOUR_PROJECT_FOLDER>` in `COLAB_DATA_ROOT` and `COLAB_ARTIFACT_ROOT` with a folder in your own Drive.
+6. Select **Runtime > Run all**. If the dataset is absent, review the linked license and type `I ACCEPT` at the prompt. KaggleHub downloads and extracts approximately 3.6 GB into Drive as a single archive transfer. Existing complete files skip the download.
 
 In Colab, the bootstrap installs the latest compatible Transformers 4.x and SentencePiece releases used by this notebook. It installs a core runtime package only if Colab does not already provide it, so it does not hot-swap NumPy, pandas, scikit-learn, seaborn, or PyTorch inside a running kernel. This preserves both binary compatibility and Colab's CUDA-enabled PyTorch build. In a local checkout, the bootstrap installs the complete pinned environment from `requirements.txt`.
 
@@ -87,27 +89,28 @@ Then open `hateful-memes-clip-siglip.ipynb` and run the cells from top to bottom
 
 Successful execution creates an ignored `artifacts/` directory containing:
 
-- `metrics.csv` — held-out metrics for every linear-probe model and feature set;
-- `test_predictions.csv` — linear-probe probabilities for transparent error analysis;
-- `interaction_metrics.csv` and `interaction_test_predictions.csv` — results for the six learned CLIP/SigLIP fusion heads;
+- `clip_fusion_lpe_metrics.csv` and `siglip_fusion_lpe_metrics.csv` — the three primary fusion-specific linear probes for each frozen encoder;
+- `fusion_lpe_metrics.csv` and `fusion_lpe_test_predictions.csv` — combined results and probabilities for the six LPE systems;
+- `direct_fusion_ablation_metrics.csv` and `direct_fusion_ablation_predictions.csv` — results for the six nonlinear no-LPE ablations;
+- `test_predictions.csv` — combined primary, ablation, and baseline probabilities for transparent error analysis;
 - `concat_bert_metrics.csv`, `concat_bert_training_history.csv`, and `concat_bert_test_predictions.csv` — the independent literature-baseline run;
-- `model_family_metrics.csv` — the compact cross-family comparison table;
+- `primary_model_metrics.csv` — the ordered seven-model comparison table;
+- `primary_model_bootstrap_intervals.csv` — held-out uncertainty intervals for the seven primary models;
 - `run_metadata.json` — versions, device, seed, and model identifiers;
 - `embeddings/` — reusable frozen embeddings; and
-- `models/` — fitted scikit-learn probes plus one PyTorch checkpoint per learned fusion model and the Concat BERT baseline.
+- `models/` — one PyTorch checkpoint per fusion-specific LPE, direct-fusion ablation, and Concat BERT baseline.
 
 Do not publish performance claims until the notebook has completed and the generated metrics have been reviewed. Cached artifacts are intentionally excluded from version control because they can be large and may encode dataset-derived information.
 
 ## Methodological notes
 
-- Both encoders receive the same dataset splits and downstream classifier family.
-- Embeddings are L2-normalized before linear probing.
-- Logistic-regression regularization is selected by development ROC-AUC.
-- The selected probe is refit on train + development data before test evaluation.
-- The learned CLIP/SigLIP heads use frozen cached embeddings and early stopping on development ROC-AUC.
+- Both encoders receive the same dataset splits and fusion/readout families.
+- Embeddings are L2-normalized before fusion and linear probing.
+- Concat and align LPE use linear layers over fixed fused features. Cross LPE uses a bilinear layer, which is linear over the full outer-product feature map without materializing it.
+- LPE checkpoints and direct nonlinear fusion checkpoints are selected independently by development ROC-AUC before held-out evaluation.
+- The direct CLIP/SigLIP fusion heads use frozen cached embeddings and are reported only as no-LPE ablations.
 - Concat BERT is a separate end-to-end BERT + ResNet-152 reproduction; it does not reuse CLIP/SigLIP embeddings and is not presented as an original architecture. The implementation adapts DrivenData's public mid-level concatenation scaffold, whose original demonstration used fixed fastText embeddings rather than BERT.
 - ROC-AUC and average precision use probabilities, not thresholded predictions.
-- The constant-probability baseline makes chance-level performance explicit.
 
 ## Limitations and responsible use
 
